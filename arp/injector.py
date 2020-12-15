@@ -1,4 +1,4 @@
-from typing import List, Dict, Union
+from typing import List, Optional, Tuple, Union
 from overrides import overrides
 
 from torch import Tensor
@@ -32,7 +32,7 @@ class ArpInjector(Module, FromParams):
         # We skip [MASK] tokens and treat the rest as prompts
         self.prompt_to_id.pop(tokenizer.mask_token, tokenizer.mask_token_id)
 
-        self.prompt_params: Dict[str, Parameter] = ParameterDict({
+        self.prompt_params = ParameterDict({
             prompt: Parameter(Tensor(self.embedding_dim))
             for prompt in self.prompt_to_id
         })
