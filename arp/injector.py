@@ -40,9 +40,15 @@ class ArpInjector(Module, FromParams):
         self.reset_params()
 
     def reset_params(self):
-        # TODO handle `prompt_better_init`
+        if self.prompt_better_init:
+            mean = self.embedder.weight.mean()
+            std = self.embedder.weight.std()
+        else:
+            mean = 0.
+            std = 1.
+
         for param in self.prompt_params.values():
-            init.normal_(param)
+            init.normal_(param, mean=mean, std=std)
 
     @overrides
     def forward(self, input: Tensor) -> Tensor:
