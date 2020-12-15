@@ -128,9 +128,11 @@ class ArpClassifier(Model):
                    regularizer=regularizer,
                    serialization_dir=serialization_dir)
 
-
     def forward(  # type: ignore
-        self, tokens: TextFieldTensors, label: torch.IntTensor = None
+        self,
+        tokens: TextFieldTensors,
+        label: torch.IntTensor = None,
+        **metadata
     ) -> Dict[str, torch.Tensor]:
 
         """
@@ -170,6 +172,7 @@ class ArpClassifier(Model):
         probs = torch.nn.functional.softmax(logits, dim=-1)
 
         output_dict = {"logits": logits, "probs": probs}
+        output_dict["pair_id"] = metadata.get("pair_id", [None] * len(probs))
         output_dict["token_ids"] = util.get_token_ids_from_text_field_tensors(tokens)
         if label is not None:
             loss = self._loss(logits, label.long().view(-1))
