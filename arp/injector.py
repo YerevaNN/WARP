@@ -18,7 +18,7 @@ class ArpInjector(Module, FromParams):
     def __init__(self,
                  embedder: Embedding,
                  tokenizer: PreTrainedTokenizer,
-                 prompts: List[Union[int, str]] = None,
+                 prompts: List[Optional[Union[int, str, Tuple[str, str]]]] = None,
                  prompt_better_init: bool = False):
         super().__init__()
 

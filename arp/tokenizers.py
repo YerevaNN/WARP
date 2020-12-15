@@ -12,7 +12,8 @@ class ArpTokenizer(PretrainedTransformerTokenizer):
     def __init__(self,
                  *args,
                  add_special_tokens: bool = True,
-                 prompts: Union[int, List[Union[str, int]]] = None,
+                 prompts: List[Optional[Union[str, int, Tuple[str, str]]]] = None,
+                 as_one_segment: bool = False,
                  **kwargs):
         super().__init__(*args,
                          add_special_tokens=False,
@@ -20,19 +21,24 @@ class ArpTokenizer(PretrainedTransformerTokenizer):
         self._arp_add_special_tokens = add_special_tokens
 
         if prompts is None:
-            prompts = 1
-        if isinstance(prompts, int):
-            prompts = [50261, 50262, 50263][:prompts]
+            prompts = []
 
         _, self.prompts = self.prepare_prompts(prompts, tokenizer=self.tokenizer)
 
+        self.as_one_segment = as_one_segment
+
     @classmethod
     def prepare_prompts(cls,
-                        prompts: List[Union[str, int]],
-                        tokenizer: PreTrainedTokenizer) -> Tuple[Dict[str, int], List[Token]]:
+                        prompts: List[Optional[Union[str, int, Tuple[str, str]]]],
+                        tokenizer: PreTrainedTokenizer) -> Tuple[Dict[str, int], List[Optional[Token]]]:
         prompt_to_id: Dict[str, int] = dict()
-        prompt_tokens: List[Token] = []
+        prompt_to_init: Dict[str, str] = dict()
+        prompt_tokens: List[Optional[Token]] = []
         for prompt in prompts:
+            if prompt is None:
+                prompt_tokens.append(None)
+                continue
+
             if isinstance(prompt, int):
                 # If the index is -1 we treat it as `[MASK]` token
                 if prompt > 0:
@@ -41,9 +47,11 @@ class ArpTokenizer(PretrainedTransformerTokenizer):
                     assert tokenizer.mask_token_id is not None
                     prompt_id = tokenizer.mask_token_id
                 prompt_token = tokenizer.convert_ids_to_tokens(prompt_id)
-            else:
+            elif isinstance(prompt, str):
                 prompt_token = prompt
                 prompt_id = tokenizer.convert_tokens_to_ids(prompt_token)
+            else:
+                raise NotImplementedError  # TODO
 
             prompt_to_id[prompt_token] = prompt_id
 
@@ -57,7 +65,6 @@ class ArpTokenizer(PretrainedTransformerTokenizer):
 
         return prompt_to_id, prompt_tokens
 
-    @overrides
     def tokenize(self, text: str) -> List[Token]:
         tokenized = super().tokenize(text)
         if not self._arp_add_special_tokens:
@@ -68,7 +75,31 @@ class ArpTokenizer(PretrainedTransformerTokenizer):
                            tokens1: List[Token],
                            tokens2: Optional[List[Token]] = None
                            ) -> List[Token]:
-        prepend_tokens = []
-        for token in self.prompts:
-            prepend_tokens.append(token)
-        return super().add_special_tokens(prepend_tokens + tokens1, tokens2)
+        prompt_tokens = iter(self.prompts)
+
+        pre_tokens: List[Token] = []
+        for token in prompt_tokens:
+            if token is None:
+                break
+            pre_tokens.append(token)
+
+        sep_tokens: List[Token] = []
+        for token in prompt_tokens:
+            if token is None:
+                break
+            sep_tokens.append(token)
+
+        post_tokens: List[Token] = []
+        for token in prompt_tokens:
+            if token is None:
+                raise NotImplementedError
+            post_tokens.append(token)
+
+        if self.as_one_segment:
+            if tokens2 is None:
+                tokens2 = []
+            return super().add_special_tokens(pre_tokens + tokens1 + sep_tokens + tokens2 + post_tokens)
+
+        assert not sep_tokens
+        assert not post_tokens
+        return super().add_special_tokens(pre_tokens + tokens1, tokens2)
