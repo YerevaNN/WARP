@@ -1,2 +1,2 @@
-# arp
-Learning Task Reformulation through Adversarial ReProgramming
+# WARP
+Word-level Adversarial ReProgramming
