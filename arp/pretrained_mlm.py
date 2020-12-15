@@ -29,6 +29,7 @@ class PretrainedMLM(TokenEmbedder):
         train_parameters: Union[bool, str] = True,
         arp_injector: Union[Lazy[ArpInjector], ArpInjector],
         on_logits: bool = False,
+        eval_mode: bool = False,
         tokenizer_kwargs: Optional[Dict[str, Any]] = None,
         transformer_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -74,6 +75,7 @@ class PretrainedMLM(TokenEmbedder):
 
         self.config.output_hidden_states = True
         self.on_logits = on_logits
+        self.eval_mode = eval_mode
 
     @overrides
     def state_dict(self, destination, prefix, keep_vars):
@@ -160,6 +162,9 @@ class PretrainedMLM(TokenEmbedder):
             Shape: `[batch_size, num_wordpieces, embedding_size]`.
 
         """
+        if self.eval_mode:
+            self.eval()
+
         # Some of the huggingface transformers don't support type ids at all and crash when you supply
         # them. For others, you can supply a tensor of zeros, and if you don't, they act as if you did.
         # There is no practical difference to the caller, so here we pretend that one case is the same
