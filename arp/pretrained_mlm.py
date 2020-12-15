@@ -4,6 +4,7 @@ from overrides import overrides
 import logging
 
 import torch
+from torch.nn import Identity
 
 from allennlp.common.lazy import Lazy
 from allennlp.data.tokenizers import PretrainedTransformerTokenizer
@@ -28,7 +29,7 @@ class PretrainedMLM(TokenEmbedder):
         max_length: int = None,
         train_parameters: Union[bool, str] = True,
         arp_injector: Union[Lazy[ArpInjector], ArpInjector],
-        on_logits: bool = False,
+        on_logits: Union[bool, str] = False,
         eval_mode: bool = False,
         tokenizer_kwargs: Optional[Dict[str, Any]] = None,
         transformer_kwargs: Optional[Dict[str, Any]] = None,
@@ -77,6 +78,13 @@ class PretrainedMLM(TokenEmbedder):
         self.on_logits = on_logits
         self.eval_mode = eval_mode
 
+        if on_logits == 'pre_decoder':
+            lm_head = self.transformer_model_for_mlm.lm_head
+            lm_head._layer_norm = lm_head.layer_norm
+            lm_head._decoder = lm_head.decoder
+            lm_head.layer_norm = Identity()
+            lm_head.decoder = Identity()
+
     @overrides
     def state_dict(self, destination, prefix, keep_vars):
         states = super().state_dict(prefix=prefix, keep_vars=keep_vars)
@@ -122,7 +130,7 @@ class PretrainedMLM(TokenEmbedder):
 
     @overrides
     def get_output_dim(self):
-        if self.on_logits:
+        if self.on_logits is True:
             return self.config.vocab_size
         return self.output_dim
 
