@@ -1,5 +1,8 @@
-from typing import Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from overrides import overrides
+
+import json
+import logging
 
 import torch
 import torch.nn
@@ -12,44 +15,16 @@ from allennlp.modules import FeedForward, Seq2VecEncoder, TextFieldEmbedder
 from allennlp.nn import InitializerApplicator, util
 from allennlp.nn.regularizers import RegularizerApplicator
 from allennlp.nn.util import get_text_field_mask
-from allennlp.training.metrics import CategoricalAccuracy
+from allennlp.training.metrics import CategoricalAccuracy, Metric
+
+from .injector import ArpInjector
+from .tokenizers import ArpTokenizer
+
+logger = logging.getLogger(__name__)
 
 
 # @Model.register("arp_classifier")
 class ArpClassifier(Model):
-    """
-    This `Model` implements a basic text classifier. After embedding the text into
-    a text field, we will optionally encode the embeddings with a `Seq2SeqEncoder`. The
-    resulting sequence is pooled using a `Seq2VecEncoder` and then passed to
-    a linear classification layer, which projects into the label space. If a
-    `Seq2SeqEncoder` is not provided, we will pass the embedded text directly to the
-    `Seq2VecEncoder`.
-
-    Registered as a `Model` with name "basic_classifier".
-
-    # Parameters
-
-    vocab : `Vocabulary`
-    text_field_embedder : `TextFieldEmbedder`
-        Used to embed the input text into a `TextField`
-    seq2seq_encoder : `Seq2SeqEncoder`, optional (default=`None`)
-        Optional Seq2Seq encoder layer for the input text.
-    seq2vec_encoder : `Seq2VecEncoder`
-        Required Seq2Vec encoder layer. If `seq2seq_encoder` is provided, this encoder
-        will pool its output. Otherwise, this encoder will operate directly on the output
-        of the `text_field_embedder`.
-    feedforward : `FeedForward`, optional, (default = `None`)
-        An optional feedforward layer to apply after the seq2vec_encoder.
-    dropout : `float`, optional (default = `None`)
-        Dropout percentage to use.
-    num_labels : `int`, optional (default = `None`)
-        Number of labels to project to in classification layer. By default, the classification layer will
-        project to the size of the vocabulary namespace corresponding to labels.
-    label_namespace : `str`, optional (default = `"labels"`)
-        Vocabulary namespace corresponding to labels. By default, we use the "labels" namespace.
-    initializer : `InitializerApplicator`, optional (default=`InitializerApplicator()`)
-        If provided, will be used to initialize the model parameters.
-    """
     def __init__(
         self,
         vocab: Vocabulary,
@@ -63,76 +38,129 @@ class ArpClassifier(Model):
         initializer: InitializerApplicator = InitializerApplicator(),
         regularizer: RegularizerApplicator = None,
         serialization_dir: Optional[str] = None,
+        classifier_bias: bool = True,
+        classifier_trainable: bool = True,
+        classifier_init: Dict[str, str] = None,
+        metrics: Optional[List[Metric]] = None,
     ) -> None:
-        super().__init__(vocab,
-                         regularizer=regularizer,
-                         serialization_dir=serialization_dir)
+        super().__init__(
+            vocab, regularizer=regularizer, serialization_dir=serialization_dir
+        )
         self._text_field_embedder = text_field_embedder
         self._seq2vec_encoder = seq2vec_encoder
         self._feedforward = feedforward
+        self._label_namespace = label_namespace
+        self._namespace = namespace
+
+        self._metrics = metrics or []
+        self._reports: Dict[str, Any] = {}
+
         if feedforward is not None:
             self._classifier_input_dim = feedforward.get_output_dim()
         else:
             self._classifier_input_dim = self._seq2vec_encoder.get_output_dim()
 
+        self._dropout: Optional[torch.nn.Dropout] = None
         if dropout:
             self._dropout = torch.nn.Dropout(dropout)
-        else:
-            self._dropout = None
-        self._label_namespace = label_namespace
-        self._namespace = namespace
 
-        if num_labels:
-            self._num_labels = num_labels
+        if num_labels is None:
+            num_labels = vocab.get_vocab_size(namespace=self._label_namespace)
+        if num_labels <= 1:
+            logger.warning("Treating as a regression task!")
+            num_labels = 1
+
+        self._num_labels = num_labels
+
+        self._loss: Union[torch.nn.CrossEntropyLoss, torch.nn.MSELoss]
+        self._accuracy: Optional[CategoricalAccuracy]
+        if num_labels > 1:
+            self._loss = torch.nn.CrossEntropyLoss()
+            self._accuracy = CategoricalAccuracy()
         else:
-            self._num_labels = vocab.get_vocab_size(namespace=self._label_namespace)
-        self._classification_layer = torch.nn.Linear(self._classifier_input_dim, self._num_labels)
-        self._accuracy = CategoricalAccuracy()
-        self._loss = torch.nn.CrossEntropyLoss()
+            self._loss = torch.nn.MSELoss()
+            self._accuracy = None
+
+        self._classification_layer = torch.nn.Linear(
+            self._classifier_input_dim, self._num_labels, bias=classifier_bias
+        )
+        if classifier_init is not None:
+            injector: ArpInjector = self._text_field_embedder._token_embedders[
+                "tokens"
+            ].embeddings_layer.word_embeddings
+            tokenizer = injector.tokenizer
+            lm_head = self._text_field_embedder._token_embedders["tokens"].lm_head
+            for class_name, init_with in classifier_init.items():
+                class_idx = self.vocab.get_token_index(
+                    class_name, namespace=self._label_namespace
+                )
+                init_with = ArpTokenizer.get_space_aware_token(init_with, tokenizer)
+                token_idx = tokenizer.convert_tokens_to_ids(init_with)
+                with torch.no_grad():
+                    self._classification_layer.weight[
+                        class_idx
+                    ] = injector.embedder.weight[token_idx]
+                    if self._classification_layer.bias is not None:
+                        self._classification_layer.bias[class_idx] = lm_head.bias[
+                            token_idx
+                        ]
+
+        if not classifier_trainable:
+            self._classification_layer.weight.requires_grad = False
+
         initializer(self)
 
     @classmethod
-    def from_partial_objects(cls,
-                             vocab: Vocabulary,
-                             text_field_embedder: TextFieldEmbedder,
-                             seq2vec_encoder: Lazy[Seq2VecEncoder],
-                             feedforward: Lazy[FeedForward] = None,
-                             dropout: float = None,
-                             num_labels: int = None,
-                             label_namespace: str = "labels",
-                             namespace: str = "tokens",
-                             initializer: InitializerApplicator = InitializerApplicator(),
-                             regularizer: RegularizerApplicator = None,
-                             serialization_dir: Optional[str] = None,
-                             ):
+    def from_partial_objects(
+        cls,
+        vocab: Vocabulary,
+        text_field_embedder: TextFieldEmbedder,
+        seq2vec_encoder: Lazy[Seq2VecEncoder],
+        feedforward: Lazy[FeedForward] = None,
+        dropout: float = None,
+        num_labels: int = None,
+        label_namespace: str = "labels",
+        namespace: str = "tokens",
+        initializer: InitializerApplicator = InitializerApplicator(),
+        regularizer: RegularizerApplicator = None,
+        serialization_dir: Optional[str] = None,
+        classifier_bias: bool = True,
+        classifier_trainable: bool = True,
+        classifier_init: Dict[str, str] = None,
+        metrics: Optional[Union[Metric, List[Metric]]] = None,
+    ):
         embedding_dim = text_field_embedder.get_output_dim()
 
         seq2vec_encoder_ = seq2vec_encoder.construct(embedding_dim=embedding_dim)
         embedding_dim = seq2vec_encoder_.get_output_dim()
 
+        feedforward_: Optional[FeedForward]
         if feedforward is not None:
             feedforward_ = feedforward.construct(input_dim=embedding_dim)
             embedding_dim = feedforward_.get_output_dim()
         else:
             feedforward_ = None
 
-        return cls(vocab=vocab,
-                   text_field_embedder=text_field_embedder,
-                   seq2vec_encoder=seq2vec_encoder_,
-                   feedforward=feedforward_,
-                   dropout=dropout,
-                   num_labels=num_labels,
-                   label_namespace=label_namespace,
-                   namespace=namespace,
-                   initializer=initializer,
-                   regularizer=regularizer,
-                   serialization_dir=serialization_dir)
+        return cls(
+            vocab=vocab,
+            text_field_embedder=text_field_embedder,
+            seq2vec_encoder=seq2vec_encoder_,
+            feedforward=feedforward_,
+            dropout=dropout,
+            num_labels=num_labels,
+            label_namespace=label_namespace,
+            namespace=namespace,
+            initializer=initializer,
+            regularizer=regularizer,
+            serialization_dir=serialization_dir,
+            classifier_bias=classifier_bias,
+            classifier_trainable=classifier_trainable,
+            classifier_init=classifier_init,
+            metrics=metrics,
+        )
 
     def forward(  # type: ignore
-        self,
-        tokens: TextFieldTensors,
-        label: torch.IntTensor = None,
-        **metadata
+        self, tokens: TextFieldTensors = None, label: torch.IntTensor = None, **metadata
     ) -> Dict[str, torch.Tensor]:
 
         """
@@ -156,43 +184,129 @@ class ArpClassifier(Model):
             - `loss` : (`torch.FloatTensor`, optional) :
                 A scalar loss to be optimised.
         """
-        embedded_text = self._text_field_embedder(tokens)
-        # embedded_text = transformer_outputs.
+        if tokens is None:
+            tokens = metadata.pop("sentence")
+
+        token_embeddings = self._text_field_embedder(tokens)
+
         mask = get_text_field_mask(tokens)
 
-        embedded_text = self._seq2vec_encoder(embedded_text, mask=mask)
+        text_embeddings = self._seq2vec_encoder(token_embeddings, mask=mask)
 
         if self._dropout:
-            embedded_text = self._dropout(embedded_text)
+            text_embeddings = self._dropout(text_embeddings)
 
         if self._feedforward is not None:
-            embedded_text = self._feedforward(embedded_text)
+            text_embeddings = self._feedforward(text_embeddings)
 
-        logits = self._classification_layer(embedded_text)
-        probs = torch.nn.functional.softmax(logits, dim=-1)
+        logits = self._classification_layer(text_embeddings)
+        output_dict = {"logits": logits}
+        if self._num_labels > 1:
+            probs = torch.nn.functional.softmax(logits, dim=-1)
+            output_dict["probs"] = probs
 
-        output_dict = {"logits": logits, "probs": probs}
-        output_dict["pair_id"] = metadata.get("pair_id", [None] * len(probs))
+        for key in ["idx", "pair_id"]:
+            output_dict[key] = metadata.get(key, [None] * len(logits))
         output_dict["token_ids"] = util.get_token_ids_from_text_field_tensors(tokens)
+
         if label is not None:
-            loss = self._loss(logits, label.long().view(-1))
-            output_dict["loss"] = loss
-            self._accuracy(logits, label)
+            if self._num_labels > 1:
+                loss = self._loss(logits, label.long().view(-1))
+                output_dict["loss"] = loss
+
+                assert self._accuracy is not None
+                self._accuracy(logits, label)
+
+                # Shape: (batch_size,)
+                predictions = logits.argmax(axis=-1)
+                # Shape: (batch_size,)
+                references = label
+
+            else:
+                # Shape: (batch_size,)
+                predictions = logits.squeeze(-1)
+                # Shape: (batch_size,)
+                references = label
+                loss = self._loss(logits.squeeze(-1), label)
+                output_dict["loss"] = loss
+
+            for metric in self._metrics:
+                metric(predictions, references)
 
         return output_dict
 
     @overrides
     def make_output_human_readable(
         self, output_dict: Dict[str, torch.Tensor]
-    ) -> Dict[str, torch.Tensor]:
+    ) -> Dict[str, Union[List, torch.Tensor]]:
         """
         Does a simple argmax over the probabilities, converts index to string label, and
         add `"label"` key to the dictionary with the result.
         """
-        predictions = output_dict["probs"]
-        if predictions.dim() == 2:
-            predictions_list = [predictions[i] for i in range(predictions.shape[0])]
-        else:
+        predictions = output_dict["logits"]
+
+        if self._num_labels <= 1:
+            return {
+                "index": output_dict["idx"],
+                "prediction": predictions.squeeze(-1).tolist(),
+            }
+
+        class_ids: List[int] = []
+        class_names: List[str] = []
+        for prediction in predictions.cpu():
+            label_idx: int = prediction.argmax(dim=-1).item()
+            label_str = self.vocab.get_index_to_token_vocabulary(
+                self._label_namespace
+            ).get(label_idx, str(label_idx))
+            class_ids.append(label_idx)
+            class_names.append(label_str)
+        return {
+            "index": output_dict["idx"],
+            "prediction": class_ids,
+            "label": class_names,
+        }
+
+    def get_metrics(self, reset: bool = False) -> Dict[str, float]:
+
+        if reset:
+            self.on_batch(batch_number=0)
+
+        metrics = {}
+        if self._accuracy is not None:
+            metrics["accuracy"] = self._accuracy.get_metric(reset)
+        for metric in self._metrics:
+            for key, value in metric.get_metric(reset).items():
+                metrics[key] = value
+        if reset:
+            metrics.update(self._reports)
+
+        if reset:
+            metric_order = [
+                "pearson",
+                "spearmanr",
+                "matthews_correlation",
+                "f1",
+                "accuracy",
+            ]
+            for metric_key in metric_order:
+                val_metric = metrics.get(metric_key)
+                if val_metric is not None:
+                    break
+            else:
+                raise NotImplementedError
+
+            metrics["val_metric"] = val_metric
+
+        return metrics
+
+    def load_state_dict(
+        self,
+        state_dict: Union[Dict[str, torch.Tensor], Dict[str, torch.Tensor]],
+        strict: bool = False,
+    ) -> None:
+        outputs = super().load_state_dict(state_dict, strict=strict)
+        return outputs
+
             predictions_list = [predictions]
         classes = []
         for prediction in predictions_list:
@@ -221,7 +335,8 @@ class ArpClassifier(Model):
                         strict: bool = False):
         return super().load_state_dict(state_dict, strict=strict)
 
-    default_predictor = "text_classifier"
+    default_predictor = "glue-numeric"
 
 
 Model.register("arp_classifier", constructor="from_partial_objects")(ArpClassifier)
+Model.register("warp_classifier", constructor="from_partial_objects")(ArpClassifier)
