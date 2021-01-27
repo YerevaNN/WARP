@@ -46,7 +46,9 @@ class PretrainedMLM(TokenEmbedder):
 
         self.config = self.transformer_model_for_mlm.config
         self._max_length = max_length
-        self.output_dim = self.config.hidden_size
+        self.output_dim = getattr(
+            self.config, "embedding_size", self.config.hidden_size
+        )
 
         tokenizer = PretrainedTransformerTokenizer(
             model_name,
@@ -54,44 +56,61 @@ class PretrainedMLM(TokenEmbedder):
         )
         self._num_added_start_tokens = len(tokenizer.single_sequence_start_tokens)
         self._num_added_end_tokens = len(tokenizer.single_sequence_end_tokens)
-        self._num_added_tokens = self._num_added_start_tokens + self._num_added_end_tokens
+        self._num_added_tokens = (
+            self._num_added_start_tokens + self._num_added_end_tokens
+        )
 
+        frozen_prompts = False
+        if train_parameters == "no_prompts":
+            train_parameters = "only_prompts"
+            frozen_prompts = True
         self.train_parameters = train_parameters
+
         if train_parameters is not True:
             for key, param in self.named_parameters():
-                last_layer_name = f'layer.{self.num_hidden_layers - 1}.attention'
-                if train_parameters != 'only_prompts':
-                    if train_parameters == 'last_layer_only' and last_layer_name in key or '.lm_head.' in key:
+                last_layer_name = f"layer.{self.num_hidden_layers - 1}.attention"
+                if train_parameters != "only_prompts":
+                    if (
+                        train_parameters == "last_layer_only"
+                        and last_layer_name in key
+                        or ".lm_head." in key
+                    ):
                         continue
                 param.requires_grad = False
 
         # Now, let's inject ARP if neccessary
         transformer_embeddings = self.embeddings_layer
         if isinstance(arp_injector, Lazy):
-            arp_injector_ = arp_injector.construct(embedder=transformer_embeddings.word_embeddings,
-                                                   tokenizer=tokenizer.tokenizer)
+            arp_injector_ = arp_injector.construct(
+                embedder=transformer_embeddings.word_embeddings,
+                tokenizer=tokenizer.tokenizer,
+            )
         else:
             arp_injector_ = arp_injector
+        if frozen_prompts:
+            arp_injector_.freeze_prompts()
         transformer_embeddings.word_embeddings = arp_injector_
 
         self.config.output_hidden_states = True
         self.on_logits = on_logits
         self.eval_mode = eval_mode
 
-        if on_logits == 'pre_decoder':
-            lm_head = self.transformer_model_for_mlm.lm_head
-            lm_head._layer_norm = lm_head.layer_norm
+        # self.lm_head = self.transformer_model_for_mlm.lm_head
+        if on_logits in ["pre_decoder", "pre_decoder_layer_norm"]:
+            lm_head = self.lm_head
             lm_head._decoder = lm_head.decoder
-            lm_head.layer_norm = Identity()
             lm_head.decoder = Identity()
+            if on_logits != "pre_decoder_layer_norm":
+                lm_head._layer_norm = lm_head.layer_norm
+                lm_head.layer_norm = Identity()
 
     @overrides
     def state_dict(self, destination, prefix, keep_vars):
         states = super().state_dict(prefix=prefix, keep_vars=keep_vars)
 
-        logger.warning(f'saving {self.train_parameters}')
-        if self.train_parameters == 'only_prompts':
-            keys_to_remove = [key for key in states if '.prompt_params.' not in key]
+        logger.warning(f"saving {self.train_parameters}")
+        if self.train_parameters == "only_prompts":
+            keys_to_remove = [key for key in states if ".prompt_params" not in key]
             for key in keys_to_remove:
                 del states[key]
 
@@ -116,9 +135,24 @@ class PretrainedMLM(TokenEmbedder):
     #     return destination
 
     @property
+    def lm_head(self):
+        # TODO fix the hard-coded segment
+        for key in ["lm_head", "predictions", "cls", "generator_lm_head"]:
+            model = getattr(self.transformer_model_for_mlm, key, None)
+            if model is not None:
+                return model
+        else:
+            raise NotImplementedError
+
+    @property
     def transformer_model(self):
         # TODO fix the hard-coded segment
-        return self.transformer_model_for_mlm.roberta
+        for key in ["roberta", "albert", "bert", "electra"]:
+            model = getattr(self.transformer_model_for_mlm, key, None)
+            if model is not None:
+                return model
+        else:
+            raise NotImplementedError
 
     @property
     def num_hidden_layers(self):
@@ -149,6 +183,7 @@ class PretrainedMLM(TokenEmbedder):
         mask: torch.BoolTensor,
         type_ids: Optional[torch.LongTensor] = None,
         segment_concat_mask: Optional[torch.BoolTensor] = None,
+        **kwargs,
     ) -> torch.Tensor:  # type: ignore
         """
         # Parameters
@@ -183,7 +218,9 @@ class PretrainedMLM(TokenEmbedder):
                 type_ids = None
             else:
                 if max_type_id >= self._number_of_token_type_embeddings():
-                    raise ValueError("Found type ids too large for the chosen transformer model.")
+                    raise ValueError(
+                        "Found type ids too large for the chosen transformer model."
+                    )
                 assert token_ids.shape == type_ids.shape
 
         transformer_mask = segment_concat_mask if self._max_length is not None else mask
@@ -195,13 +232,16 @@ class PretrainedMLM(TokenEmbedder):
         # We call this with kwargs because some of the huggingface models don't have the
         # token_type_ids parameter and fail even when it's given as None.
         # Also, as of transformers v2.5.1, they are taking FloatTensor masks.
-        parameters = {"input_ids": token_ids, "attention_mask": transformer_mask.float()}
+        parameters = {
+            "input_ids": token_ids,
+            "attention_mask": transformer_mask.float(),
+            **kwargs,
+        }
         if type_ids is not None:
             parameters["token_type_ids"] = type_ids
 
         parameters["return_dict"] = True
         transformer_output = self.transformer_model_for_mlm(**parameters)
-
 
         if self.on_logits:
             return transformer_output.logits
