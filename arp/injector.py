@@ -12,6 +12,7 @@ from torch.nn.modules.container import ParameterDict
 
 from transformers.tokenization_utils import PreTrainedTokenizer
 
+from allennlp.common import Lazy
 from allennlp.common import FromParams
 from allennlp.modules import FeedForward
 
@@ -29,6 +30,7 @@ class ArpInjector(Module, FromParams):
         prompt_better_init: Union[bool, str] = False,
         frozen_prompts: bool = False,
         optimized_prompts: bool = False,
+        reparameterization: FeedForward = None,
         dropout: float = None,
     ):
         super().__init__()
@@ -37,8 +39,10 @@ class ArpInjector(Module, FromParams):
         self.embedding_dim = embedder.embedding_dim
         self.tokenizer = tokenizer
         self.frozen_prompts = frozen_prompts
+        self.prompt_params_reparam = reparameterization
         self.prompt_better_init = prompt_better_init
 
+        self.prompts = prompts
         self.prompt_template = ArpTokenizer.prepare_prompts(
             prompts, tokenizer=tokenizer, default_init=prompt_better_init
         )
@@ -69,6 +73,8 @@ class ArpInjector(Module, FromParams):
                     if prompt != tokenizer.mask_token
                 }
             )
+            if reparameterization:
+                raise NotImplementedError
 
         if frozen_prompts:
             self.freeze_prompts()
@@ -121,6 +127,9 @@ class ArpInjector(Module, FromParams):
 
         # Shape: (num_prompts, embedding_dim)
         prompt_params = self.prompt_params
+        if self.prompt_params_reparam is not None:
+            prompt_params = F.relu(prompt_params)
+            prompt_params = self.prompt_params_reparam(prompt_params)
 
         if self.dropout is not None:
             prompt_params = self.dropout(prompt_params)
