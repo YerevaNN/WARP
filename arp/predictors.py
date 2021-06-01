@@ -14,7 +14,7 @@ class GluePredictor(Predictor):
         self.columns: Optional[List[str]] = None
         self.numeric = numeric
 
-    def to_tsv_row(columns: List[str]) -> str:
+    def to_tsv_row(self, columns: List[str]) -> str:
         return "\t".join(str(value) for value in columns) + "\n"
 
     @overrides
@@ -62,10 +62,36 @@ class SuperGluePredictor(Predictor):
 
         output = dict(idx=int(outputs["index"]), label=prediction)
 
-        return json.dumps(output) + "\n"
+        return json.dumps(output, ensure_ascii=False) + "\n"
 
 
 @Predictor.register("super_glue-numeric")
 class SuperGlueNumericPredictor(SuperGluePredictor):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, numeric=True, **kwargs)
+
+
+@Predictor.register("pseudolabeling")
+class PseudoLabelingPredictor(SuperGluePredictor):
+    # def __init__(self, *args, **kwargs) -> None:
+    #     super().__init__(*args, numeric=True, **kwargs)
+
+    @overrides
+    def dump_line(self, outputs: JsonDict) -> str:
+
+        if not self.numeric:
+            prediction = outputs["label"]
+        else:
+            prediction = outputs["prediction"]
+            if isinstance(prediction, float):
+                prediction = min(max(prediction, 0), 5)
+                prediction = f"{prediction:.3f}"
+
+        output = {
+            "idx": int(outputs["index"]),
+            # "label": prediction,
+            "pseudolabel": outputs["logits"],
+            **outputs.get("raw_input", {})
+        }
+
+        return json.dumps(output, ensure_ascii=False) + "\n"
