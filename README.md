@@ -3,6 +3,8 @@ This repository contains code for ACL'2021 Paper [WARP: Word-level Adversarial R
 
 <img src="https://svgshare.com/i/XpG.svg">
 Transfer learning from pretrained language models recently became the dominant approach for solving many NLP tasks. A common approach to transfer learning for multiple tasks that maximize parameter sharing trains one or more task-specific layers on top of the language model. In this paper, we present an alternative approach based on adversarial reprogramming, which extends earlier work on automatic prompt generation. Adversarial reprogramming attempts to learn task-specific word embeddings that, when concatenated to the input text, instruct the language model to solve the specified task. Using up to 25K trainable parameters per task, this approach outperforms all existing methods with up to 25M trainable parameters on the public leaderboard of the GLUE benchmark. Our method, initialized with task-specific human-readable prompts, also works in a few-shot setting, outperforming GPT-3 on two SuperGLUE tasks with just 32 training samples.
+<sup>WARP adds a few trainable embeddings around the input, which causes the masked language model to predict the sentiment of the sentence in the SST-2 task.</sup>
+
 
 # Few-Shot Results
 <table>
