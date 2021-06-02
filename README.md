@@ -4,6 +4,74 @@ This repository contains code for ACL'2021 Long Paper [WARP: Word-level Adversar
 # Abstract
 Transfer learning from pretrained language models recently became the dominant approach for solving many NLP tasks. A common approach to transfer learning for multiple tasks that maximize parameter sharing trains one or more task-specific layers on top of the language model. In this paper, we present an alternative approach based on adversarial reprogramming, which extends earlier work on automatic prompt generation. Adversarial reprogramming attempts to learn task-specific word embeddings that, when concatenated to the input text, instruct the language model to solve the specified task. Using up to 25K trainable parameters per task, this approach outperforms all existing methods with up to 25M trainable parameters on the public leaderboard of the GLUE benchmark. Our method, initialized with task-specific human-readable prompts, also works in a few-shot setting, outperforming GPT-3 on two SuperGLUE tasks with just 32 training samples.
 
+# Few-Shot Results
+<table>
+  <tr>
+    <th>Set</th>
+    <th>Model</th>
+    <th>CB</th>
+    <th>RTE</th>
+  </tr>
+  <tr>
+    <td rowspan="7" align="center">dev</td>
+  </tr>
+  <tr>
+    <td>GPT-3 Small</td>
+    <td>26.1 / 42.9</td>
+    <td>52.3</td>
+  </tr>
+  <tr>
+    <td>GPT-3 Med</td>
+    <td>40.4 / 58.9</td>
+    <td>48.4</td>
+  </tr>
+  <tr>
+    <td>GPT-3</td>
+    <td>57.2 / 82.1</td>
+    <td>72.9</td>
+  </tr>
+  <tr>
+    <td>PET (ALBERT)</td>
+    <td>59.4 / 85.1</td>
+    <td>69.8</td>
+  </tr>
+  <tr>
+    <td>iPET (ALBERT)</td>
+    <td>92.4 / 92.9</td>
+    <td>74.0</td>
+  </tr>
+  <tr>
+    <td>WARP<sub>init</sub> (ALBERT) </td>
+    <td>84.0 / 87.5</td>
+    <td>71.8</td>
+  </tr>
+  <tr>
+    <td rowspan="6" align="center">test</td>
+  </tr>
+  <tr>
+    <td>GPT-3                             </td>
+    <td>52.0 / 75.6</td>
+    <td>69.0</td>
+  </tr>
+  <tr>
+    <td>PET (ALBERT)                      </td>
+    <td>60.2 / 87.2</td>
+    <td>67.2</td>
+  </tr>
+  <tr>
+    <td>iPET (ALBERT)                     </td>
+    <td>79.9 / 88.8</td>
+    <td>70.8</td>
+  </tr>
+  <tr>
+    <td>WARP<sub>init</sub> (ALBERT) </td>
+    <td>70.2 / 82.4</td>
+    <td>69.1</td>
+  </tr>
+</table>
+<sub>Results on SuperGLUE benchmark. The results for the test set are obtained from SuperGLUE evaluation server.
+We only show systems performing in a similar few-shot training setup using 32 examples.</sub>
+
 # Setup
 The code requires YerevaNN's internal version of `allennlp`
 ```
