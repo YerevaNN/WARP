@@ -1,4 +1,4 @@
-# WARP: Word-level Adversarial ReProgramming
+# 🌀 WARP: Word-level Adversarial ReProgramming
 This repository contains code for ACL'2021 Long Paper [WARP: Word-level Adversarial ReProgramming](https://arxiv.org/abs/2101.00121).
 
 # Abstract
