@@ -7,70 +7,85 @@ Transfer learning from pretrained language models recently became the dominant a
 # Few-Shot Results
 <table>
   <tr>
-    <th>Set</th>
-    <th>Model</th>
-    <th>CB</th>
+    <th rowspan="2">Set</th>
+    <th rowspan="2">Model</th>
+    <th colspan="2">CB</th>
     <th>RTE</th>
+  </tr>
+  <tr>
+    <td align="center"><b>F<sub>1</sub></b></td>
+    <td align="center"><b>Acc.</b></td>
+    <td align="center"><b>Acc.</b></td>
   </tr>
   <tr>
     <td rowspan="7" align="center">dev</td>
   </tr>
   <tr>
     <td>GPT-3 Small</td>
-    <td>26.1 / 42.9</td>
-    <td>52.3</td>
+    <td align="right">26.1</td>
+    <td align="right">42.9</td>
+    <td align="right">52.3</td>
   </tr>
   <tr>
     <td>GPT-3 Med</td>
-    <td>40.4 / 58.9</td>
-    <td>48.4</td>
+    <td align="right">40.4</td>
+    <td align="right">58.9</td>
+    <td align="right">48.4</td>
   </tr>
   <tr>
     <td>GPT-3</td>
-    <td>57.2 / 82.1</td>
-    <td>72.9</td>
+    <td align="right">57.2</td>
+    <td align="right">82.1</td>
+    <td align="right">72.9</td>
   </tr>
   <tr>
     <td>PET (ALBERT)</td>
-    <td>59.4 / 85.1</td>
-    <td>69.8</td>
+    <td align="right">59.4</td>
+    <td align="right">85.1</td>
+    <td align="right">69.8</td>
   </tr>
   <tr>
     <td>iPET (ALBERT)</td>
-    <td>92.4 / 92.9</td>
-    <td>74.0</td>
+    <td align="right">92.4</td>
+    <td align="right">92.9</td>
+    <td align="right">74.0</td>
   </tr>
   <tr>
     <td>WARP<sub>init</sub> (ALBERT) </td>
-    <td>84.0 / 87.5</td>
-    <td>71.8</td>
+    <td align="right">84.0</td>
+    <td align="right">87.5</td>
+    <td align="right">71.8</td>
   </tr>
   <tr>
     <td rowspan="6" align="center">test</td>
   </tr>
   <tr>
     <td>GPT-3                             </td>
-    <td>52.0 / 75.6</td>
-    <td>69.0</td>
+    <td align="right">52.0</td>
+    <td align="right">75.6</td>
+    <td align="right">69.0</td>
   </tr>
   <tr>
     <td>PET (ALBERT)                      </td>
-    <td>60.2 / 87.2</td>
-    <td>67.2</td>
+    <td align="right">60.2</td>
+    <td align="right">87.2</td>
+    <td align="right">67.2</td>
   </tr>
   <tr>
     <td>iPET (ALBERT)                     </td>
-    <td>79.9 / 88.8</td>
-    <td>70.8</td>
+    <td align="right">79.9</td>
+    <td align="right">88.8</td>
+    <td align="right">70.8</td>
   </tr>
   <tr>
     <td>WARP<sub>init</sub> (ALBERT) </td>
-    <td>70.2 / 82.4</td>
-    <td>69.1</td>
+    <td align="right">70.2</td>
+    <td align="right">82.4</td>
+    <td align="right">69.1</td>
   </tr>
 </table>
-<sub>Results on SuperGLUE benchmark. The results for the test set are obtained from SuperGLUE evaluation server.
-We only show systems performing in a similar few-shot training setup using 32 examples.</sub>
+<sup>Results on SuperGLUE benchmark. The results for the test set are obtained from SuperGLUE evaluation server.
+We only show systems performing in a similar few-shot training setup using 32 examples.</sup>
 
 # Setup
 The code requires YerevaNN's internal version of `allennlp`
@@ -80,10 +95,10 @@ git checkout warp
 pip install .
 ```
 
-## Training
+# Training
 
 
-# Linear Probing
+### Linear Probing
 ```sh
 for DATASET in 'cola' 'sst2' 'mrpc' 'qqp' 'stsb' 'mnli' 'rte' 'wnli' 'qnli'
 do
@@ -100,7 +115,7 @@ do
 done
 ```
 
-# WARP_0
+### WARP_0
 ```sh
 for DATASET in 'cola' 'sst2' 'mrpc' 'qqp' 'stsb' 'mnli' 'rte' 'wnli' 'qnli'
 do
