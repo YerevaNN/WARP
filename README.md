@@ -229,3 +229,22 @@ python -m allennlp predict \
   --batch-size 50 \
   --predictor glue --output-file v0.1/MNLI-m.tsv /data/arp/.aim/H-93ae5ae9 test_matched
 ```
+
+## Citation
+If you want to refer to our work use this bibTeX:
+```
+@inproceedings{hambardzumyan-etal-2021-warp,
+    title = "{WARP}: {W}ord-level {A}dversarial {R}e{P}rogramming",
+    author = "Hambardzumyan, Karen  and
+      Khachatrian, Hrant  and
+      May, Jonathan",
+    booktitle = "Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers)",
+    month = aug,
+    year = "2021",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2021.acl-long.381",
+    doi = "10.18653/v1/2021.acl-long.381",
+    pages = "4921--4933"
+}
+```
