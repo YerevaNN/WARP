@@ -158,6 +158,7 @@ local H = hparams;
         "batch_sampler": {
             "type": "max_tokens_sampler",
             "max_tokens" : if H.transformer_model != 'albert-xxlarge-v2' then 4096 else 512
+        }
     },
 
 
