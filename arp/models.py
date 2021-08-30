@@ -269,7 +269,8 @@ class ArpClassifier(Model):
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
 
         if reset:
-            self.on_batch(batch_number=0)
+            ...
+            # self.on_batch(batch_number=0)
 
         metrics = {}
         if self._accuracy is not None:
@@ -307,7 +308,7 @@ class ArpClassifier(Model):
         outputs = super().load_state_dict(state_dict, strict=strict)
         return outputs
 
-            predictions_list = [predictions]
+        predictions_list = [predictions]
         classes = []
         for prediction in predictions_list:
             label_idx = prediction.argmax(dim=-1).item()
@@ -326,10 +327,6 @@ class ArpClassifier(Model):
             )
         output_dict["tokens"] = tokens
         return output_dict
-
-    def get_metrics(self, reset: bool = False) -> Dict[str, float]:
-        metrics = {"accuracy": self._accuracy.get_metric(reset)}
-        return metrics
 
     def load_state_dict(self, state_dict: Union[Dict[str, torch.Tensor], Dict[str, torch.Tensor]],
                         strict: bool = False):
