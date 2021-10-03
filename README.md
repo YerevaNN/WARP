@@ -1,5 +1,5 @@
 # 🌀 WARP: Word-level Adversarial ReProgramming
-This repository contains code for ACL'2021 Paper [WARP: Word-level Adversarial ReProgramming](https://arxiv.org/abs/2101.00121).
+This repository contains code for ACL'2021 Paper [WARP: Word-level Adversarial ReProgramming](https://aclanthology.org/2021.acl-long.381/).
 
 <img src="https://svgshare.com/i/XpG.svg">
 <sup>WARP adds a few trainable embeddings around the input, which causes the masked language model to predict the sentiment of the sentence in the SST-2 task.</sup>
